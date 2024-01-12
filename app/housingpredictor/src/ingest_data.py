@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import randint
 from six.moves import urllib
+from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.impute import SimpleImputer
 from sklearn.linear_model import LinearRegression
@@ -15,6 +16,8 @@ from sklearn.model_selection import (
     StratifiedShuffleSplit,
     train_test_split,
 )
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeRegressor
 
 import argparse
@@ -22,6 +25,18 @@ import logging
 from logging.config import fileConfig
 import configparser
 
+
+class CombinedAttributesAdder(BaseEstimator, TransformerMixin):
+    def __init__(self):
+        self.add_bedrooms_per_room = add_bedrooms_per_room
+    def fit(self, X, y=None):
+        return self
+    def transform(self, X):
+        rooms_per_household = X["total_rooms"] / X["households"]
+        population_per_household = X["population"] / X["households"]
+        bedrooms_per_room = X["total_bedrooms"] / X["total_rooms"]
+        return np.c_[X, rooms_per_household, population_per_household,
+                         bedrooms_per_room]
 
 
 def fetch_housing_data(housing_url=HOUSING_URL, housing_path=HOUSING_PATH):
@@ -172,23 +187,15 @@ if __name__ == "__main__":
     )  # drop labels for training set
     housing_labels = strat_train_set["median_house_value"].copy()
 
-    imputer = SimpleImputer(strategy="median")
-
     housing_num = housing.drop("ocean_proximity", axis=1)
+    
+    num_pipeline = Pipeline([
+        ('imputer', SimpleImputer(strategy="median")),
+        ('attribs_adder', CombinedAttributesAdder()),
+        ('std_scaler', StandardScaler()),
+    ])
 
-    imputer.fit(housing_num)
-    X = imputer.transform(housing_num)
-
-    housing_tr = pd.DataFrame(X, columns=housing_num.columns, index=housing.index)
-    housing_tr["rooms_per_household"] = (
-        housing_tr["total_rooms"] / housing_tr["households"]
-    )
-    housing_tr["bedrooms_per_room"] = (
-        housing_tr["total_bedrooms"] / housing_tr["total_rooms"]
-    )
-    housing_tr["population_per_household"] = (
-        housing_tr["population"] / housing_tr["households"]
-    )
+    housing_num_tr = num_pipeline.fit_transform(housing_num)
 
     housing_cat = housing[["ocean_proximity"]]
     housing_prepared = housing_tr.join(pd.get_dummies(housing_cat, drop_first=True))
@@ -197,20 +204,9 @@ if __name__ == "__main__":
     y_test = strat_test_set["median_house_value"].copy()
 
     X_test_num = X_test.drop("ocean_proximity", axis=1)
-    X_test_prepared = imputer.transform(X_test_num)
-    X_test_prepared = pd.DataFrame(
-        X_test_prepared, columns=X_test_num.columns, index=X_test.index
-    )
-    X_test_prepared["rooms_per_household"] = (
-        X_test_prepared["total_rooms"] / X_test_prepared["households"]
-    )
-    X_test_prepared["bedrooms_per_room"] = (
-        X_test_prepared["total_bedrooms"] / X_test_prepared["total_rooms"]
-    )
-    X_test_prepared["population_per_household"] = (
-        X_test_prepared["population"] / X_test_prepared["households"]
-    )
-
+    
+    X_test_prepared = num_pipeline.fit_transform(X_test_num)
+    
     X_test_cat = X_test[["ocean_proximity"]]
     X_test_prepared = X_test_prepared.join(
         pd.get_dummies(X_test_cat, drop_first=True)
