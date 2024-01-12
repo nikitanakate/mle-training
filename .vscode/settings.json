@@ -1,0 +1,4 @@
+{
+    "editor.defaultFoldingRangeProvider": "ms-python.flake8",
+    "editor.defaultFormatter": "ms-python.flake8"
+}

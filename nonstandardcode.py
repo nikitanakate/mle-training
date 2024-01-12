@@ -99,6 +99,7 @@ housing = strat_train_set.drop(
 )  # drop labels for training set
 housing_labels = strat_train_set["median_house_value"].copy()
 
+
 imputer = SimpleImputer(strategy="median")
 
 housing_num = housing.drop("ocean_proximity", axis=1)
